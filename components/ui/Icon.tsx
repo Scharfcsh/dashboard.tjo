@@ -1,0 +1,71 @@
+import {
+  BadgeCheck,
+  BarChart3,
+  CalendarDays,
+  CircleDot,
+  CircleX,
+  Crown,
+  Coins,
+  CreditCard,
+  Eye,
+  FileText,
+  Filter,
+  Flame,
+  FlaskConical,
+  Gauge,
+  Globe,
+  Leaf,
+  Moon,
+  RefreshCw,
+  ShoppingCart,
+  Sparkles,
+  Tag,
+  Target,
+  TrendingUp,
+  TriangleAlert,
+  UserCheck,
+  Users,
+  Wallet,
+  Zap,
+  type LucideIcon,
+  type LucideProps,
+} from "lucide-react";
+import type { IconKey } from "@/lib/revenue-center/types";
+
+// Icons are referenced by key in the view-model (data crosses the server/client
+// boundary; component references cannot).
+const ICONS: Record<IconKey, LucideIcon> = {
+  users: Users,
+  activity: CircleDot,
+  flame: Flame,
+  eye: Eye,
+  cart: ShoppingCart,
+  wallet: Wallet,
+  file: FileText,
+  alert: TriangleAlert,
+  "x-circle": CircleX,
+  moon: Moon,
+  refresh: RefreshCw,
+  zap: Zap,
+  target: Target,
+  sparkles: Sparkles,
+  tag: Tag,
+  "credit-card": CreditCard,
+  "user-check": UserCheck,
+  calendar: CalendarDays,
+  filter: Filter,
+  gauge: Gauge,
+  coins: Coins,
+  leaf: Leaf,
+  chart: BarChart3,
+  crown: Crown,
+  "trending-up": TrendingUp,
+  "check-circle": BadgeCheck,
+  flask: FlaskConical,
+  globe: Globe,
+};
+
+export function Icon({ name, ...props }: { name: IconKey } & LucideProps) {
+  const Component = ICONS[name];
+  return <Component aria-hidden strokeWidth={2} {...props} />;
+}
