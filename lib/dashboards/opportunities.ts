@@ -1,6 +1,7 @@
 import { queryOne, queryRows } from "@/lib/db/pool";
 import { userFilterSql, type UserFilters } from "@/lib/metrics/filters";
 import { formatUserSummary, USER_SUMMARY_COLUMNS, USER_SUMMARY_JOINS, type UserSummaryRow } from "@/lib/users/summary";
+import { withUserDetails } from "@/lib/user-details";
 
 // ---------------------------------------------------------------------------
 // Ranked unpaid users with monetization signals - the one query behind
@@ -89,7 +90,7 @@ export async function listOpportunities(f: UserFilters, page: { limit: number; o
   }
   where += userFilterSql(f, p);
 
-  const [rows, total] = await Promise.all([
+  const [raw, total] = await Promise.all([
     queryRows<OpportunityRow>(
       `SELECT ${USER_SUMMARY_COLUMNS}, ps.facts, plan.event_name AS last_plan_clicked
        FROM users u ${USER_SUMMARY_JOINS}
@@ -105,6 +106,7 @@ export async function listOpportunities(f: UserFilters, page: { limit: number; o
     ),
     queryOne<{ n: string }>(`SELECT count(*) AS n FROM users u ${USER_SUMMARY_JOINS} ${where}`, p),
   ]);
+  const rows = await withUserDetails(raw);
 
   const data = rows.map((r) => {
     const facts = r.facts ?? {};

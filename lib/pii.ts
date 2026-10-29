@@ -1,8 +1,9 @@
 import { audit } from "@/lib/audit";
+import { getConfig } from "@/lib/config";
 import { actorId } from "@/lib/http/auth";
 
 // ---------------------------------------------------------------------------
-// PII is masked by default (SOP 17.2). `?reveal_pii=true` returns full values
+// PII is masked by default (SOP 17.2) unless PII_MASKING=false. `?reveal_pii=true` returns full values
 // and writes an audit_logs row naming the actor and the users revealed.
 // KNOWN GAP: without RBAC anyone holding the admin key may reveal.
 // ---------------------------------------------------------------------------
@@ -33,13 +34,15 @@ export interface PiiFields {
 }
 
 export function applyPii<T extends PiiFields>(row: T, reveal: boolean): T {
-  if (reveal) return row;
+  // PII_MASKING=false: every viewer may see contact details, so nothing is masked.
+  if (reveal || !getConfig().PII_MASKING) return row;
   return { ...row, email: maskEmail(row.email), phone: maskPhone(row.phone) };
 }
 
 /** Audit a reveal. Call once per response that returned unmasked PII. */
 export async function auditPiiReveal(req: Request, userIds: string[], endpoint: string): Promise<void> {
-  if (userIds.length === 0) return;
+  // Nothing can be written on a read-only connection; the reveal still goes ahead.
+  if (userIds.length === 0 || getConfig().EVENTS_DATABASE_READ_ONLY) return;
   await audit({
     actorId: actorId(req.headers),
     action: "pii.revealed",

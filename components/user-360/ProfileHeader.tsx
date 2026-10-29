@@ -78,12 +78,18 @@ export function ProfileHeader({
               <span aria-hidden>{flagEmoji(user.country)}</span>
               {countryName(user.country)}
             </span>
-            {user.city && (
-              <span className="inline-flex items-center gap-1">
-                <MapPin className="size-3 text-slate-400" aria-hidden /> {user.city}
+            {(user.city ?? user.details?.location) && (
+              <span className="inline-flex min-w-0 items-center gap-1">
+                <MapPin className="size-3 shrink-0 text-slate-400" aria-hidden />
+                <span className="truncate">{user.city ?? user.details?.location}</span>
               </span>
             )}
           </p>
+          {user.details?.headline && (
+            <p className="mt-1 line-clamp-2 text-2xs text-slate-600" title={user.details.headline}>
+              {user.details.headline}
+            </p>
+          )}
           {user.targetRole && (
             <p className="mt-1 inline-flex items-center gap-1 text-2xs text-slate-600">
               <BriefcaseBusiness className="size-3 text-slate-400" aria-hidden /> {user.targetRole}

@@ -4,6 +4,7 @@ import { definitionsFor, pct, trend } from "@/lib/metrics/definitions";
 import * as K from "@/lib/metrics/kpis";
 import { HOT_PQL_MIN_SCORE } from "@/lib/scoring/pql-config";
 import { rangeMeta, type DateRange } from "@/lib/time/business-time";
+import { withUserDetails } from "@/lib/user-details";
 
 // Dashboard 1 - Founder Revenue Command Center (SOP section 8).
 
@@ -264,7 +265,7 @@ export async function alertsSummary(range: DateRange, limit: number) {
       critical_created_in_range: Number(counts?.critical_in_range ?? 0),
       open_total: Number(counts?.open_total ?? 0),
       overdue_sla: Number(counts?.overdue ?? 0),
-      recent_critical: recent,
+      recent_critical: await withUserDetails(recent, { name: "user_name", email: null, phone: null }),
     },
     meta: {
       ...rangeMeta(range),

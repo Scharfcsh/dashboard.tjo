@@ -9,6 +9,8 @@ import { FEATURES, pageInfo } from "@/lib/live-intelligence/derive";
 import { mockLiveIntelligence } from "@/lib/live-intelligence/mock";
 import type { EventCategory, LiveEvent, LiveIntelligenceData, LiveUser } from "@/lib/live-intelligence/types";
 import { USER_SUMMARY_COLUMNS, USER_SUMMARY_JOINS, type UserSummaryRow } from "@/lib/users/summary";
+import { withUserDetails } from "@/lib/user-details";
+import { userSearchClause } from "@/lib/users/search";
 
 // ---------------------------------------------------------------------------
 // Live User Intelligence loader. Reads derived tables only (presence cache,
@@ -111,30 +113,19 @@ async function loadLive(query: string): Promise<LiveIntelligenceData> {
 }
 
 async function loadUsers(query: string): Promise<LiveUser[]> {
-  const params: unknown[] = [MAX_USERS];
-  let search = "";
-  const q = query.trim();
-  if (q) {
-    params.push(`%${q.replace(/[\\%_]/g, (m) => `\\${m}`)}%`);
-    search = ` AND (u.user_id ILIKE $2 OR u.name ILIKE $2 OR u.email ILIKE $2`;
-    const digits = q.replace(/\D/g, "");
-    if (digits.length >= 3) {
-      params.push(`%${digits}%`);
-      search += ` OR regexp_replace(COALESCE(u.phone, ''), '\\D', '', 'g') LIKE $3`;
-    }
-    search += ")";
-  }
-  const rows = await queryRows<UserRow>(
+  const search = await userSearchClause(query, 1);
+  const raw = await queryRows<UserRow>(
     `SELECT ${USER_SUMMARY_COLUMNS}, u.signup_at, lead.owner_id, ps.facts,
             cs.started_at AS session_started_at,
             COALESCE(pr.last_seen_at, u.last_active_at) AS seen_at
      FROM users u ${USER_SUMMARY_JOINS}
      LEFT JOIN user_sessions cs ON cs.session_id = pr.current_session_id
-     WHERE COALESCE(pr.last_seen_at, u.last_active_at) > now() - interval '7 days'${search}
+     WHERE COALESCE(pr.last_seen_at, u.last_active_at) > now() - interval '7 days'${search.sql}
      ORDER BY is_online DESC, ps.priority ASC NULLS LAST, COALESCE(ps.score, 0) DESC, seen_at DESC NULLS LAST
      LIMIT $1`,
-    params
+    [MAX_USERS, ...search.params]
   );
+  const rows = await withUserDetails(raw);
 
   return rows.map((r) => {
     const f = r.facts ?? {};

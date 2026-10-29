@@ -139,6 +139,7 @@ function referenceProfile(now: number): UserProfileData {
       nextBestAction: "call_now",
       firstTouch: "Instagram",
       campaign: "Bangalore_Reel_07",
+      details: null,
     },
     metrics: [
       metric("sessions", "Sessions", "17", "activity", "blue", 13, "vs last 30 days", "Browser sessions (30 idle minutes ends one)."),
@@ -278,6 +279,7 @@ function derivedProfile(userId: string, now: number): UserProfileData | null {
       nextBestAction: u.nextBestAction,
       firstTouch: u.source ? u.source[0]!.toUpperCase() + u.source.slice(1) : null,
       campaign: null,
+      details: null,
     },
     metrics: [
       metric("sessions", "Sessions", String(sessions), "activity", "blue", 8, "vs last 30 days", base.metrics[0]!.definition),

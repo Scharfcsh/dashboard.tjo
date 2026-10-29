@@ -25,6 +25,20 @@ const intWithDefault = (fallback: number) => z.coerce.number().int().positive().
 
 const schema = z.object({
   EVENTS_DATABASE_URL: z.string().min(1, "EVENTS_DATABASE_URL is required"),
+  // Every connection starts read-only, so Postgres rejects any write. For
+  // pointing a local app at a production database.
+  EVENTS_DATABASE_READ_ONLY: bool(false),
+  // The product database holding the "User" table (name, email, phone, plan...).
+  // Optional: without it lists show user ids. Always opened read-only.
+  USER_DETAIL_DB: z.string().trim().optional(),
+  // Mask email and phone in every list (SOP 17.2). Turn off only when every
+  // viewer is allowed to see contact details.
+  PII_MASKING: bool(true),
+  // Single-user dashboard sign-in. If any of these is missing, sign-in is
+  // treated as not configured and every page stays locked.
+  DASHBOARD_EMAIL: z.string().trim().toLowerCase().optional(),
+  DASHBOARD_PASSWORD: z.string().optional(),
+  SESSION_SECRET: z.string().optional(),
   INGEST_API_KEY: z.string().min(1, "INGEST_API_KEY is required"),
   ADMIN_API_KEY: z.string().min(1, "ADMIN_API_KEY is required"),
   ALLOWED_ORIGINS: csv,

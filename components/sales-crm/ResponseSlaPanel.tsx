@@ -63,7 +63,7 @@ export function ResponseSlaPanel({
             : "Every open lead has an owner."}
         </p>
         {demo ? (
-          <Tooltip content="Assigning leads is disabled while showing demo data." side="top">
+          <Tooltip content="Assigning leads is disabled — see the note at the top of the page." side="top">
             <span tabIndex={0} className="focus-ring mt-2 inline-flex rounded-lg">
               <span
                 aria-disabled="true"

@@ -265,6 +265,7 @@ export function mockSalesCrm(filters: SalesFilters, reason: string): SalesCrmDat
 
   return {
     source: { kind: "demo", reason },
+    readOnly: false,
     generatedAt: new Date(nowMs - 45_000).toISOString(),
     filters,
     caller: {
@@ -276,6 +277,7 @@ export function mockSalesCrm(filters: SalesFilters, reason: string): SalesCrmDat
       active: true,
       email: `${selectedCaller.name.split(" ")[0]!.toLowerCase()}@topjoboffer.com`,
     },
+    scope: "self",
     callerOptions: CALLERS.map((c) => ({ value: c.id, label: c.name })),
     kpis: KPI_SPEC.map(
       ([key, label, value, icon, tone, caption, captionTone, definition]): SalesKpi => ({

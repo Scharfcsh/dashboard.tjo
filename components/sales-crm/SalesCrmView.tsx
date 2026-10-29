@@ -2,7 +2,7 @@
 
 import { useCallback, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { TriangleAlert } from "lucide-react";
+import { Lock, TriangleAlert } from "lucide-react";
 import { CallNextCard } from "@/components/sales-crm/CallNextCard";
 import { CallerKpis } from "@/components/sales-crm/CallerKpis";
 import { CallerLeaderboard } from "@/components/sales-crm/CallerLeaderboard";
@@ -38,6 +38,10 @@ export function SalesCrmView({ data }: { data: SalesCrmData }) {
   const [pending, startTransition] = useTransition();
   const [toast, setToast] = useState<{ text: string; tone: "ok" | "error" } | null>(null);
   const demo = data.source.kind === "demo";
+  // Actions are off for demo data and on a read-only connection alike; the
+  // children only need to know they cannot write.
+  const locked = demo || data.readOnly;
+  const team = data.scope === "team";
 
   const show = useCallback((text: string, tone: "ok" | "error") => {
     setToast({ text, tone });
@@ -176,6 +180,15 @@ export function SalesCrmView({ data }: { data: SalesCrmData }) {
           {data.source.reason} Leads below are illustrative, and contact actions are disabled.
         </p>
       )}
+      {!demo && data.readOnly && (
+        <p
+          role="note"
+          className="mb-3 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700"
+        >
+          <Lock className="size-3.5 shrink-0" aria-hidden />
+          Live data · read-only connection — contact actions are disabled.
+        </p>
+      )}
 
       <div className="grid grid-cols-1 gap-3 wide:grid-cols-[minmax(0,1fr)_19rem]">
         <div className="min-w-0 space-y-3">
@@ -190,7 +203,7 @@ export function SalesCrmView({ data }: { data: SalesCrmData }) {
               <ResponseSlaPanel
                 metrics={data.sla}
                 unassignedOpenLeads={data.unassignedOpenLeads}
-                demo={demo}
+                demo={locked}
                 busy={pending}
                 onAssign={assignLeads}
               />
@@ -200,7 +213,7 @@ export function SalesCrmView({ data }: { data: SalesCrmData }) {
           {data.callNext ? (
             <CallNextCard
               lead={data.callNext}
-              demo={demo}
+              demo={locked}
               busy={pending}
               onContact={(type) => contact(data.callNext!.leadId, data.callNext!.name, type)}
             />
@@ -208,7 +221,7 @@ export function SalesCrmView({ data }: { data: SalesCrmData }) {
             <EmptyQueue
               unassigned={data.unassignedOpenLeads}
               isManager={data.caller.isManager}
-              demo={demo}
+              demo={locked}
               busy={pending}
               onAssign={assignLeads}
             />
@@ -218,25 +231,26 @@ export function SalesCrmView({ data }: { data: SalesCrmData }) {
             leads={data.queue}
             total={data.queueTotal}
             selectedLeadId={selectedLeadId}
-            demo={demo}
+            demo={locked}
             busy={pending}
+            team={team}
             onSelect={selectLead}
             onContact={(lead, type) => contact(lead.leadId, lead.name, type)}
           />
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-            <CompleteCallPanel lead={selectedQueueLead} demo={demo} busy={pending} onSubmit={completeCall} />
-            <FollowUpTimeline followUps={data.followUps} onSelect={selectLead} />
+            <CompleteCallPanel lead={selectedQueueLead} demo={locked} busy={pending} onSubmit={completeCall} />
+            <FollowUpTimeline followUps={data.followUps} team={team} onSelect={selectLead} />
           </div>
 
-          <PipelineStrip stages={data.pipeline} total={data.pipelineTotal} />
+          <PipelineStrip stages={data.pipeline} total={data.pipelineTotal} team={team} />
 
         </div>
 
         <div className="min-w-0 wide:sticky wide:top-4 wide:self-start">
           <LeadDetailRail
             lead={data.selectedLead}
-            demo={demo}
+            demo={locked}
             busy={pending}
             onCall={() => data.selectedLead && contact(data.selectedLead.leadId, data.selectedLead.name, "call")}
             onAddNote={addNote}

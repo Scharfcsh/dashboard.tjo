@@ -142,6 +142,25 @@ export interface RawEventRow {
   properties: Record<string, unknown>;
 }
 
+/** From the product database's "User" table; null when it is not connected. */
+export interface ProfileDetails {
+  location: string | null;
+  headline: string | null;
+  skills: string[];
+  username: string | null;
+  onboarded: boolean;
+  lastSeenAt: string | null;
+  billing: {
+    plan: string | null;
+    planStatus: string | null;
+    billingCycle: string | null;
+    currentPeriodEnd: string | null;
+    premiumUntil: string | null;
+    proUntil: string | null;
+    paymentProvider: string | null;
+  };
+}
+
 export interface ProfileUser {
   userId: string;
   displayId: string;
@@ -165,6 +184,7 @@ export interface ProfileUser {
   nextBestAction: string | null;
   firstTouch: string | null;
   campaign: string | null;
+  details: ProfileDetails | null;
 }
 
 export interface UserProfileData {

@@ -9,13 +9,21 @@ import { timeUntil } from "@/lib/sales-crm/derive";
 import { formatClock } from "@/lib/revenue-center/format";
 import type { FollowUp } from "@/lib/sales-crm/types";
 
-export function FollowUpTimeline({ followUps, onSelect }: { followUps: FollowUp[]; onSelect: (leadId: string) => void }) {
+export function FollowUpTimeline({
+  followUps,
+  team,
+  onSelect,
+}: {
+  followUps: FollowUp[];
+  team: boolean;
+  onSelect: (leadId: string) => void;
+}) {
   const now = useNow();
 
   return (
     <SectionCard
       title="Today's Follow-Ups"
-      info="Callbacks you scheduled that are due before the end of today. A callback that is due sorts to the top of your queue."
+      info={`Callbacks ${team ? "anyone on the team" : "you"} scheduled that are due before the end of today. A callback that is due sorts to the top of the queue.`}
       actions={<span className="tabular text-2xs text-slate-500">{followUps.length}</span>}
     >
       {followUps.length === 0 ? (

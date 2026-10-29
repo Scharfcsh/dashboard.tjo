@@ -8,6 +8,7 @@ import { mockLiveUser360 } from "@/lib/live-intelligence/mock";
 import { mockUser360 } from "@/lib/mock-data";
 import { loadUser360 } from "@/lib/revenue-center/user360";
 import type { ActionResult, User360View } from "@/lib/revenue-center/types";
+import { sessionRefusal, writeRefusal } from "@/lib/auth/guard";
 
 // ---------------------------------------------------------------------------
 // Server Functions for the Revenue Command Center. They call the analytics
@@ -29,6 +30,8 @@ function failure(err: unknown): { ok: false; error: string } {
 }
 
 export async function getUser360Action(userId: string, demo: boolean): Promise<ActionResult<User360View>> {
+  const signedOut = await sessionRefusal();
+  if (signedOut) return signedOut;
   try {
     const id = z.string().min(1).max(128).parse(userId);
     if (demo) {
@@ -43,7 +46,8 @@ export async function getUser360Action(userId: string, demo: boolean): Promise<A
 }
 
 export async function assignOwnerAction(userId: string, ownerId: string, demo: boolean): Promise<ActionResult<{ ownerName: string | null }>> {
-  if (demo) return { ok: false, error: "Assignment is disabled while showing demo data." };
+  const stop = await writeRefusal("Assignment", demo);
+  if (stop) return stop;
   try {
     const input = z.object({ userId: z.string().min(1).max(128), ownerId: z.string().uuid() }).parse({ userId, ownerId });
     const result = await assignUser({ userId: input.userId, ownerId: input.ownerId, reason: "Assigned from Revenue Command Center", actor: ACTOR });
@@ -58,7 +62,8 @@ export async function logContactAction(
   type: "call" | "whatsapp" | "email",
   demo: boolean
 ): Promise<ActionResult<{ at: string }>> {
-  if (demo) return { ok: false, error: "Logging contacts is disabled while showing demo data." };
+  const stop = await writeRefusal("Logging contacts", demo);
+  if (stop) return stop;
   try {
     const input = z.object({ leadId: z.string().uuid(), type: z.enum(["call", "whatsapp", "email"]) }).parse({ leadId, type });
     const result = await logActivity(input.leadId, ACTOR, { type: input.type, outcome: input.type === "call" ? undefined : "sent" });

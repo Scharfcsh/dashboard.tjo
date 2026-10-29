@@ -5,6 +5,7 @@ import { ApiError, notFound } from "@/lib/http/errors";
 import { OPEN_LEAD_SQL } from "@/lib/jobs/sql";
 import { pct } from "@/lib/metrics/definitions";
 import { rangeMeta, type DateRange } from "@/lib/time/business-time";
+import { withUserDetails } from "@/lib/user-details";
 import { formatUserSummary, USER_SUMMARY_COLUMNS, type UserSummaryRow } from "@/lib/users/summary";
 
 // ---------------------------------------------------------------------------
@@ -96,6 +97,11 @@ function intentSignals(facts: IntentFacts | null) {
   };
 }
 
+/** One lead row with the user's name and contact details from the product database. */
+async function withDetails(row: LeadRow): Promise<LeadRow> {
+  return (await withUserDetails([row]))[0]!;
+}
+
 function formatLead(r: LeadRow, reveal: boolean) {
   return {
     lead: {
@@ -127,13 +133,19 @@ function formatLead(r: LeadRow, reveal: boolean) {
   };
 }
 
+/**
+ * Owner filter for the caller-scoped queries below. A null owner means the whole
+ * team (the manager view), so every lead matches - assigned or not.
+ */
+const ownedBy = (column: string, param: string) => `(${param}::uuid IS NULL OR ${column} = ${param})`;
+
 export async function myLeads(
-  ownerId: string,
+  ownerId: string | null,
   page: { limit: number; offset: number },
   opts: { status: "open" | "all"; priority?: string; reveal: boolean }
 ) {
   const p: unknown[] = [ownerId];
-  let where = "WHERE l.owner_id = $1";
+  let where = `WHERE ${ownedBy("l.owner_id", "$1")}`;
   if (opts.status === "open") where += ` AND l.status IN ${OPEN_LEAD_SQL}`;
   if (opts.priority) {
     p.push(opts.priority);
@@ -152,16 +164,17 @@ export async function myLeads(
               count(*) FILTER (WHERE status IN ${OPEN_LEAD_SQL} AND last_contacted_at IS NULL)               AS pending_first_contact,
               count(*) FILTER (WHERE created_at >= business_day_start(business_today()))                     AS assigned_today,
               count(*) FILTER (WHERE status = 'converted' AND closed_at >= business_day_start(business_today())) AS converted_today,
-              (SELECT count(*) FROM callbacks c WHERE c.owner_id = $1 AND c.status = 'pending'
+              (SELECT count(*) FROM callbacks c WHERE ${ownedBy("c.owner_id", "$1")} AND c.status = 'pending'
                  AND c.due_at < business_day_start(business_today() + 1))                                    AS callbacks_due_today
-       FROM sales_leads WHERE owner_id = $1`,
+       FROM sales_leads WHERE ${ownedBy("owner_id", "$1")}`,
       [ownerId]
     ),
   ]);
-  return { data: rows.map((r) => formatLead(r, opts.reveal)), total: total?.n ?? 0, summary: counts, userIds: rows.map((r) => r.user_id) };
+  const detailed = await withUserDetails(rows);
+  return { data: detailed.map((r) => formatLead(r, opts.reveal)), total: total?.n ?? 0, summary: counts, userIds: rows.map((r) => r.user_id) };
 }
 
-export async function nextLead(ownerId: string, includeUnassigned: boolean, reveal: boolean) {
+export async function nextLead(ownerId: string | null, includeUnassigned: boolean, reveal: boolean) {
   const readyFilter = `l.status IN ${OPEN_LEAD_SQL}
      AND NOT EXISTS (SELECT 1 FROM callbacks c WHERE c.lead_id = l.id AND c.status = 'pending' AND c.due_at > now()
                      AND NOT EXISTS (SELECT 1 FROM callbacks c2 WHERE c2.lead_id = l.id AND c2.status = 'pending' AND c2.due_at <= now()))
@@ -169,17 +182,17 @@ export async function nextLead(ownerId: string, includeUnassigned: boolean, reve
 
   const mine = await queryOne<LeadRow>(
     `SELECT ${USER_SUMMARY_COLUMNS}, ${LEAD_COLUMNS} FROM sales_leads l ${LEAD_JOINS}
-     WHERE l.owner_id = $1 AND ${readyFilter} ${CALL_NEXT_ORDER} LIMIT 1`,
+     WHERE ${ownedBy("l.owner_id", "$1")} AND ${readyFilter} ${CALL_NEXT_ORDER} LIMIT 1`,
     [ownerId]
   );
-  if (mine) return { data: formatLead(mine, reveal), source: "assigned" as const };
+  if (mine) return { data: formatLead(await withDetails(mine), reveal), source: "assigned" as const };
   if (!includeUnassigned) return { data: null, source: null };
 
   const unassigned = await queryOne<LeadRow>(
     `SELECT ${USER_SUMMARY_COLUMNS}, ${LEAD_COLUMNS} FROM sales_leads l ${LEAD_JOINS}
      WHERE l.owner_id IS NULL AND ${readyFilter} ${CALL_NEXT_ORDER} LIMIT 1`
   );
-  return unassigned ? { data: formatLead(unassigned, reveal), source: "unassigned_pool" as const } : { data: null, source: null };
+  return unassigned ? { data: formatLead(await withDetails(unassigned), reveal), source: "unassigned_pool" as const } : { data: null, source: null };
 }
 
 async function lockLead(client: PoolClient, leadId: string) {
@@ -369,11 +382,11 @@ export async function scheduleCallback(leadId: string, actor: string, input: { d
 const callerRevenueSql = (ownerParam: string, fromParam: string, toParam: string) => `
   SELECT COALESCE(sum(pe.amount), 0)::float8
   FROM payment_events pe
-  JOIN sales_leads sl ON sl.user_id = pe.user_id AND sl.owner_id = ${ownerParam}
+  JOIN sales_leads sl ON sl.user_id = pe.user_id AND ${ownedBy("sl.owner_id", ownerParam)}
   WHERE pe.status = 'success' AND pe.occurred_at >= sl.created_at
     AND pe.occurred_at >= ${fromParam} AND pe.occurred_at < ${toParam}`;
 
-export async function callerKpis(ownerId: string, range: DateRange) {
+export async function callerKpis(ownerId: string | null, range: DateRange) {
   const row = await queryOne<Record<string, number>>(
     `SELECT
        count(*) FILTER (WHERE l.status IN ${OPEN_LEAD_SQL})                                     AS open_leads,
@@ -383,16 +396,16 @@ export async function callerKpis(ownerId: string, range: DateRange) {
        count(*) FILTER (WHERE l.created_at >= $4 AND l.created_at < $5)                         AS assigned_previous,
        count(*) FILTER (WHERE l.status = 'converted' AND l.closed_at >= $2 AND l.closed_at < $3) AS converted_in_range,
        count(*) FILTER (WHERE l.status = 'converted' AND l.closed_at >= $4 AND l.closed_at < $5) AS converted_previous,
-       (SELECT count(*) FROM callbacks c WHERE c.owner_id = $1 AND c.status = 'pending'
+       (SELECT count(*) FROM callbacks c WHERE ${ownedBy("c.owner_id", "$1")} AND c.status = 'pending'
           AND c.due_at < business_day_start(business_today() + 1))                              AS callbacks_due,
        (SELECT count(DISTINCT a.lead_id) FROM sales_activities a JOIN sales_leads sl ON sl.id = a.lead_id
-          WHERE sl.owner_id = $1 AND a.type = 'call' AND a.outcome = 'connected'
+          WHERE ${ownedBy("sl.owner_id", "$1")} AND a.type = 'call' AND a.outcome = 'connected'
             AND a.occurred_at >= $2 AND a.occurred_at < $3)                                     AS connected_in_range,
        (SELECT count(DISTINCT a.lead_id) FROM sales_activities a JOIN sales_leads sl ON sl.id = a.lead_id
-          WHERE sl.owner_id = $1 AND a.type IN ('call', 'whatsapp', 'email')
+          WHERE ${ownedBy("sl.owner_id", "$1")} AND a.type IN ('call', 'whatsapp', 'email')
             AND a.occurred_at >= $2 AND a.occurred_at < $3)                                     AS contacted_in_range,
        (${callerRevenueSql("$1", "$2", "$3")})                                                 AS revenue_in_range
-     FROM sales_leads l WHERE l.owner_id = $1`,
+     FROM sales_leads l WHERE ${ownedBy("l.owner_id", "$1")}`,
     [ownerId, range.startUtc, range.endUtc, range.previous.startUtc, range.previous.endUtc]
   );
 
@@ -501,7 +514,7 @@ export const PIPELINE_STAGES = [
   { key: "converted", label: "Converted" },
 ] as const;
 
-export async function callerPipeline(ownerId: string) {
+export async function callerPipeline(ownerId: string | null) {
   const rows = await queryRows<{ stage: string; leads: number }>(
     `SELECT CASE
               WHEN l.status = 'converted'                                   THEN 'converted'
@@ -518,7 +531,7 @@ export async function callerPipeline(ownerId: string) {
        SELECT EXISTS (SELECT 1 FROM sales_activities a
                       WHERE a.lead_id = l.id AND a.type = 'call' AND a.outcome = 'connected') AS yes
      ) connected ON true
-     WHERE l.owner_id = $1 AND l.status <> 'lost'
+     WHERE ${ownedBy("l.owner_id", "$1")} AND l.status <> 'lost'
      GROUP BY 1`,
     [ownerId]
   );
@@ -536,7 +549,7 @@ export async function callerPipeline(ownerId: string) {
 }
 
 /** Pending callbacks for a caller, soonest first. The list behind the count. */
-export async function callbacksDue(ownerId: string, range: DateRange, limit: number) {
+export async function callbacksDue(ownerId: string | null, range: DateRange, limit: number) {
   const rows = await queryRows<{
     id: string;
     lead_id: string;
@@ -553,13 +566,13 @@ export async function callbacksDue(ownerId: string, range: DateRange, limit: num
      FROM callbacks c
      JOIN sales_leads l ON l.id = c.lead_id
      LEFT JOIN users u ON u.user_id = c.user_id
-     WHERE c.owner_id = $1 AND c.status = 'pending' AND c.due_at < $2
+     WHERE ${ownedBy("c.owner_id", "$1")} AND c.status = 'pending' AND c.due_at < $2
      ORDER BY c.due_at
      LIMIT ${limit}`,
     [ownerId, range.endUtc]
   );
   return {
-    data: rows,
+    data: await withUserDetails(rows),
     meta: { ...rangeMeta(range), owner_id: ownerId, definition: "Pending callbacks due before the end of the range." },
   };
 }
@@ -688,5 +701,5 @@ export async function leadById(leadId: string, reveal: boolean) {
     [leadId]
   );
   if (!row) throw notFound("Lead");
-  return formatLead(row, reveal);
+  return formatLead(await withDetails(row), reveal);
 }

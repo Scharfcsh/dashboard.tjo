@@ -7,6 +7,7 @@ import { filterMeta, userFilterSql, type UserFilters } from "@/lib/metrics/filte
 import { HOT_PQL_MIN_SCORE, MONETIZATION_SIGNAL_RULES, PQL_CATEGORIES, PQL_RULES_VERSION } from "@/lib/scoring/pql-config";
 import { rangeMeta, type DateRange } from "@/lib/time/business-time";
 import { formatUserSummary, USER_SUMMARY_COLUMNS, USER_SUMMARY_JOINS, type UserSummaryRow } from "@/lib/users/summary";
+import { withUserDetails } from "@/lib/user-details";
 
 // Dashboard 4 - PQL & Auto Apply Monetization Intelligence (SOP section 11).
 
@@ -373,7 +374,7 @@ export async function nearLimitCohort(threshold: number, f: UserFilters, page: {
   const p: unknown[] = [threshold];
   const filter = userFilterSql(f, p);
   const where = `WHERE NOT is_paid_user(u.user_id) AND COALESCE(aau.used, 0) >= $1${filter}`;
-  const [rows, total] = await Promise.all([
+  const [raw, total] = await Promise.all([
     queryRows<UserSummaryRow>(
       `SELECT ${USER_SUMMARY_COLUMNS}
        FROM users u ${USER_SUMMARY_JOINS}
@@ -387,6 +388,7 @@ export async function nearLimitCohort(threshold: number, f: UserFilters, page: {
       p
     ),
   ]);
+  const rows = await withUserDetails(raw);
   return {
     data: rows.map((r) => ({
       ...formatUserSummary(r, false),

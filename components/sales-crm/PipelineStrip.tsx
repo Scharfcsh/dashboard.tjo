@@ -7,11 +7,11 @@ import type { PipelineStage } from "@/lib/sales-crm/types";
 // Each lead appears once, in the furthest stage it has reached, so the strip
 // can never total more than the caller's leads.
 
-export function PipelineStrip({ stages, total }: { stages: PipelineStage[]; total: number }) {
+export function PipelineStrip({ stages, total, team }: { stages: PipelineStage[]; total: number; team: boolean }) {
   return (
     <SectionCard
-      title="My Revenue Pipeline"
-      info="Every open or converted lead you own, counted once in the furthest stage it has reached. Lost leads are excluded."
+      title={team ? "Team Revenue Pipeline" : "My Revenue Pipeline"}
+      info={`Every open or converted lead ${team ? "on the team" : "you own"}, counted once in the furthest stage it has reached. Lost leads are excluded.`}
       actions={<span className="tabular text-2xs whitespace-nowrap text-slate-500">{formatNumber(total)} leads</span>}
       bodyClassName="min-h-0 flex-1 overflow-x-auto px-4 pb-4"
     >

@@ -1,4 +1,6 @@
 import "server-only";
+import { getSession } from "@/lib/auth/session";
+import { getConfig } from "@/lib/config";
 import { queryOne, queryRows } from "@/lib/db/pool";
 import {
   callbacksDue,
@@ -50,7 +52,8 @@ import { parseRange } from "@/lib/time/business-time";
 // Falls back to clearly labelled demo data when the database is unreachable.
 //
 // The workspace is scoped to one team member. A caller sees only their own
-// queue; a sales manager additionally gets the team panels (SOP 12).
+// queue; a sales manager works the whole team's leads, assigned or not, and
+// additionally gets the team panels (SOP 12).
 // ---------------------------------------------------------------------------
 
 const QUEUE_PAGE = 25;
@@ -81,7 +84,13 @@ async function loadLive(filters: SalesFilters): Promise<SalesCrmData> {
   );
   if (team.length === 0) throw new Error("no sales team members exist");
 
-  const selected = team.find((t) => t.id === filters.caller) ?? team.find((t) => t.active) ?? team[0]!;
+  // With no caller picked, open the signed-in person's own workspace if they are on the team.
+  const signedIn = (await getSession())?.email;
+  const selected =
+    team.find((t) => t.id === filters.caller) ??
+    team.find((t) => signedIn !== undefined && t.email?.toLowerCase() === signedIn) ??
+    team.find((t) => t.active) ??
+    team[0]!;
   const caller: CallerIdentity = {
     id: selected.id,
     name: selected.name,
@@ -92,14 +101,16 @@ async function loadLive(filters: SalesFilters): Promise<SalesCrmData> {
     email: selected.email,
   };
   const range = parseRange({ range: filters.range });
+  // null = every lead, which is what a manager is accountable for.
+  const owner = caller.isManager ? null : caller.id;
 
   const [kpis, pool, queue, next, callbacks, pipeline, alerts, unassigned] = await Promise.all([
-    callerKpis(caller.id, range),
+    callerKpis(owner, range),
     leadPool(range),
-    myLeads(caller.id, { limit: QUEUE_PAGE, offset: 0 }, { status: filters.status, reveal: false }),
-    nextLead(caller.id, false, false),
-    callbacksDue(caller.id, parseRange({ range: "today" }), 12),
-    callerPipeline(caller.id),
+    myLeads(owner, { limit: QUEUE_PAGE, offset: 0 }, { status: filters.status, reveal: false }),
+    nextLead(owner, false, false),
+    callbacksDue(owner, parseRange({ range: "today" }), 12),
+    callerPipeline(owner),
     queryOne<{ n: number }>(
       "SELECT count(*)::int AS n FROM alerts WHERE owner_team = 'sales' AND status <> 'resolved'"
     ),
@@ -121,11 +132,13 @@ async function loadLive(filters: SalesFilters): Promise<SalesCrmData> {
 
   return {
     source: { kind: "live" },
+    readOnly: getConfig().EVENTS_DATABASE_READ_ONLY,
     generatedAt: new Date().toISOString(),
     filters,
     caller,
+    scope: owner === null ? "team" : "self",
     callerOptions: team.map((t) => ({ value: t.id, label: t.active ? t.name : `${t.name} (inactive)` })),
-    kpis: mapKpis(kpis.data, filters.range),
+    kpis: mapKpis(kpis.data, filters.range, owner === null),
     poolSegments: mapPool(pool.data.segments),
     poolActiveUsers: pool.data.active_users,
     callNext: callNextLead,
@@ -236,7 +249,9 @@ function delta(current: number, previous: number, range: SalesFilters["range"]):
   return `${diff > 0 ? "+" : "−"}${Math.abs(diff)} vs ${unit}`;
 }
 
-function mapKpis(k: ApiKpis, range: SalesFilters["range"]): SalesKpi[] {
+function mapKpis(k: ApiKpis, range: SalesFilters["range"], team: boolean): SalesKpi[] {
+  // A manager's numbers cover every lead, so "you" would misdescribe them.
+  const say = (mine: string, all: string) => (team ? all : mine);
   const card = (
     key: string,
     label: string,
@@ -250,13 +265,13 @@ function mapKpis(k: ApiKpis, range: SalesFilters["range"]): SalesKpi[] {
   ): SalesKpi => ({ key, label, value, format, icon, tone, caption, captionTone, definition });
 
   return [
-    card("assigned", range === "today" ? "Assigned Today" : "Assigned", k.assigned.value, "users", "blue", delta(k.assigned.value, k.assigned.previous, range), "teal", "Leads created for you inside the selected range."),
-    card("call_now", "Call Immediately", k.call_immediately, "alert", "red", k.call_immediately > 0 ? "P0 priority" : "Nothing urgent", k.call_immediately > 0 ? "red" : null, "Open P0 leads in your queue right now."),
-    card("pending", "Pending", k.pending_first_contact, "calendar", "amber", "Need outreach", null, "Open leads you have never contacted."),
-    card("callbacks", "Callbacks", k.callbacks_due, "refresh", "purple", "Scheduled", null, "Pending callbacks you own, due before the end of today."),
+    card("assigned", range === "today" ? "Assigned Today" : "Assigned", k.assigned.value, "users", "blue", delta(k.assigned.value, k.assigned.previous, range), "teal", say("Leads created for you inside the selected range.", "Leads created inside the selected range.")),
+    card("call_now", "Call Immediately", k.call_immediately, "alert", "red", k.call_immediately > 0 ? "P0 priority" : "Nothing urgent", k.call_immediately > 0 ? "red" : null, say("Open P0 leads in your queue right now.", "Open P0 leads across the team right now.")),
+    card("pending", "Pending", k.pending_first_contact, "calendar", "amber", "Need outreach", null, say("Open leads you have never contacted.", "Open leads nobody has contacted yet.")),
+    card("callbacks", "Callbacks", k.callbacks_due, "refresh", "purple", "Scheduled", null, say("Pending callbacks you own, due before the end of today.", "Pending team callbacks due before the end of today.")),
     card("connected", "Connected", k.connected.value, "user-check", "teal", k.connected.connect_rate_pct === null ? "No calls yet" : `${k.connected.connect_rate_pct}% connected`, "teal", "Distinct leads whose call connected inside the range."),
-    card("converted", "Converted", k.converted.value, "check-circle", "green", delta(k.converted.value, k.converted.previous, range), "green", "Leads you closed as converted inside the range."),
-    card("revenue", "Revenue", k.revenue, "wallet", "teal", null, null, "Successful payments inside the range by users whose lead you own, made after the lead was created.", "currency"),
+    card("converted", "Converted", k.converted.value, "check-circle", "green", delta(k.converted.value, k.converted.previous, range), "green", say("Leads you closed as converted inside the range.", "Leads closed as converted inside the range.")),
+    card("revenue", "Revenue", k.revenue, "wallet", "teal", null, null, say("Successful payments inside the range by users whose lead you own, made after the lead was created.", "Successful payments inside the range by users with a sales lead, made after the lead was created."), "currency"),
   ];
 }
 

@@ -6,6 +6,7 @@ import { filterMeta, userFilterSql, type UserFilters } from "@/lib/metrics/filte
 import { applyPii } from "@/lib/pii";
 import { LIFECYCLE_STAGES } from "@/lib/scoring/lifecycle-config";
 import { compileConditions, DSL_SCHEMA_VERSION, describeFields } from "@/lib/segments/conditions";
+import { withUserDetails } from "@/lib/user-details";
 
 // Dashboard 6 - User Segmentation & Lifecycle Intelligence (SOP section 13).
 
@@ -124,7 +125,8 @@ export async function evaluateCohort(definition: unknown, sampleSize: number, re
         )
       : Promise.resolve([]),
   ]);
-  return { count: count?.n ?? 0, sample: sample.map((s) => applyPii(s, reveal)) };
+  const detailed = await withUserDetails(sample);
+  return { count: count?.n ?? 0, sample: detailed.map((s) => applyPii(s, reveal)) };
 }
 
 export async function saveCohort(input: { id?: string; name: string; description?: string; definition: unknown; actor: string | null }) {

@@ -179,9 +179,13 @@ export interface LeadDetail {
 
 export interface SalesCrmData {
   source: DataSource;
+  /** The database connection rejects writes, so every contact action is off. */
+  readOnly: boolean;
   generatedAt: string;
   filters: SalesFilters;
   caller: CallerIdentity;
+  /** A manager works the whole team's leads; a caller only their own. */
+  scope: "self" | "team";
   callerOptions: FilterOption[];
   kpis: SalesKpi[];
   poolSegments: PoolSegment[];

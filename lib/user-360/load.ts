@@ -180,6 +180,25 @@ async function loadLive(userId: string): Promise<UserProfileData> {
       nextBestAction: (pql?.next_best_action as string | null) ?? null,
       firstTouch: d.acquisition.source ? humanize(d.acquisition.source as string) : null,
       campaign: (d.acquisition.campaign as string | null) ?? null,
+      details: d.details
+        ? {
+            location: d.details.location,
+            headline: d.details.headline,
+            skills: d.details.skills,
+            username: d.details.username,
+            onboarded: d.details.onboarded,
+            lastSeenAt: iso(d.details.last_seen_at),
+            billing: {
+              plan: d.details.billing.plan,
+              planStatus: d.details.billing.plan_status,
+              billingCycle: d.details.billing.billing_cycle,
+              currentPeriodEnd: iso(d.details.billing.current_period_end),
+              premiumUntil: iso(d.details.billing.premium_until),
+              proUntil: iso(d.details.billing.pro_until),
+              paymentProvider: d.details.billing.payment_provider,
+            },
+          }
+        : null,
     },
     metrics,
     usage: usageItems,

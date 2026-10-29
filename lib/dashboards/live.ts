@@ -8,6 +8,7 @@ import { HOT_PQL_MIN_SCORE } from "@/lib/scoring/pql-config";
 import { assignLead, assertTeamMember, findOpenLead, MANUAL_SLA_MINUTES, type LeadPriority } from "@/lib/sales/leads";
 import { eventsForSessions, formatEvent } from "@/lib/dashboards/user360";
 import { formatUserSummary, USER_SUMMARY_COLUMNS, USER_SUMMARY_JOINS, type UserSummaryRow } from "@/lib/users/summary";
+import { searchUserIds, withUserDetails } from "@/lib/user-details";
 
 // Dashboard 2 - Live User Behaviour Intelligence (SOP section 9).
 // "Online" comes only from user_presence (heartbeat cache) via online_cutoff().
@@ -53,7 +54,11 @@ export async function liveUsers(
                         AND d.business_date = business_today() AND d.is_active)`;
   if (opts.search) {
     p.push(`%${opts.search.replace(/[\\%_]/g, (m) => `\\${m}`)}%`);
-    where += ` AND (u.user_id ILIKE $${p.length} OR u.name ILIKE $${p.length} OR u.email ILIKE $${p.length} OR u.phone ILIKE $${p.length})`;
+    const like = p.length;
+    // Names and emails live in the product database; match there, then by id here.
+    p.push(await searchUserIds(opts.search));
+    where += ` AND (u.user_id ILIKE $${like} OR u.name ILIKE $${like} OR u.email ILIKE $${like} OR u.phone ILIKE $${like}
+                    OR u.user_id = ANY($${p.length}::text[]))`;
   }
   if (opts.minScore !== undefined) {
     p.push(opts.minScore);
@@ -61,7 +66,7 @@ export async function liveUsers(
   }
   where += userFilterSql(f, p);
 
-  const [rows, total] = await Promise.all([
+  const [raw, total] = await Promise.all([
     queryRows<UserSummaryRow & { session_started_at: Date | null; session_last_activity_at: Date | null; pricing_views_today: number | null }>(
       `SELECT ${USER_SUMMARY_COLUMNS},
               cs.started_at AS session_started_at, cs.last_activity_at AS session_last_activity_at,
@@ -82,6 +87,7 @@ export async function liveUsers(
       p
     ),
   ]);
+  const rows = await withUserDetails(raw);
 
   const now = Date.now();
   const data = rows.map((r) => {
@@ -206,9 +212,10 @@ export async function liveEvents(opts: {
     params
   );
   const page = keysetPage(rows, opts.limit, (r) => [r.occurred_at, r.event_id]);
+  const named = await withUserDetails(page.data, { name: "user_name", email: null, phone: null });
   return {
     ...page,
-    data: page.data.map((r) => {
+    data: named.map((r) => {
       const def = eventDefinition(r.event_name);
       return {
         ...formatEvent(r),

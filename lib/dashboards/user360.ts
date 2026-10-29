@@ -4,6 +4,7 @@ import { notFound } from "@/lib/http/errors";
 import { decodeCursor, keysetPage } from "@/lib/http/pagination";
 import { definitionsFor } from "@/lib/metrics/definitions";
 import { applyPii } from "@/lib/pii";
+import { getUserDetail } from "@/lib/user-details";
 
 // Dashboard 3 - User 360 Intelligence Profile (SOP section 10).
 // Every section keys off the same canonical user_id.
@@ -13,19 +14,31 @@ export async function assertUserExists(userId: string): Promise<void> {
   if (!row) throw notFound("User");
 }
 
+type UserRow = Record<string, unknown> & { name: string | null; email: string | null; phone: string | null };
+
 export async function user360(userId: string, reveal: boolean) {
-  const user = await queryOne<Record<string, unknown> & { email: string | null; phone: string | null }>(
-    `SELECT u.*, p.target_role, p.experience, p.preferences, p.profile_completion,
-            is_paid_user(u.user_id) AS is_paid,
-            pr.last_seen_at AS presence_last_seen_at, pr.current_page, pr.last_event_name,
-            COALESCE(pr.last_seen_at > online_cutoff(), false) AS is_online
-     FROM users u
-     LEFT JOIN user_profiles p ON p.user_id = u.user_id
-     LEFT JOIN user_presence pr ON pr.user_id = u.user_id
-     WHERE u.user_id = $1`,
-    [userId]
-  );
-  if (!user) throw notFound("User");
+  const [found, detail] = await Promise.all([
+    queryOne<UserRow>(
+      `SELECT u.*, p.target_role, p.experience, p.preferences, p.profile_completion,
+              is_paid_user(u.user_id) AS is_paid,
+              pr.last_seen_at AS presence_last_seen_at, pr.current_page, pr.last_event_name,
+              COALESCE(pr.last_seen_at > online_cutoff(), false) AS is_online
+       FROM users u
+       LEFT JOIN user_profiles p ON p.user_id = u.user_id
+       LEFT JOIN user_presence pr ON pr.user_id = u.user_id
+       WHERE u.user_id = $1`,
+      [userId]
+    ),
+    getUserDetail(userId),
+  ]);
+  if (!found) throw notFound("User");
+  // Contact details live in the product database; analytics values win if set.
+  const user: UserRow = {
+    ...found,
+    name: found.name ?? detail?.name ?? null,
+    email: found.email ?? detail?.email ?? null,
+    phone: found.phone ?? detail?.phone ?? null,
+  };
 
   const [usage, autoApply, milestones, pql, lifecycle, subscriptions, payments, lead, activityCounts, callbacks, alerts] =
     await Promise.all([
@@ -120,6 +133,25 @@ export async function user360(userId: string, reveal: boolean) {
           last_event: user.last_event_name,
         },
       },
+      details: detail
+        ? {
+            location: detail.location,
+            headline: detail.headline,
+            skills: detail.skills,
+            username: detail.username,
+            onboarded: detail.onboarded,
+            last_seen_at: detail.lastSeenAt,
+            billing: {
+              plan: detail.plan,
+              plan_status: detail.planStatus,
+              billing_cycle: detail.billingCycle,
+              current_period_end: detail.currentPeriodEnd,
+              premium_until: detail.premiumUntil,
+              pro_until: detail.proUntil,
+              payment_provider: detail.paymentProvider,
+            },
+          }
+        : null,
       profile: {
         target_role: user.target_role ?? null,
         experience: user.experience ?? null,

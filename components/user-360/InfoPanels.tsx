@@ -1,9 +1,11 @@
+import type { ReactNode } from "react";
 import { BadgeCheck, CircleAlert, CircleCheck, CircleX } from "lucide-react";
 import { SectionCard } from "@/components/dashboard/SectionCard";
 import { Badge } from "@/components/ui/Badge";
 import { Icon } from "@/components/ui/Icon";
 import { cx } from "@/components/ui/tones";
-import type { AcquisitionItem, HealthItem, UsageItem } from "@/lib/user-360/types";
+import { humanize } from "@/lib/revenue-center/format";
+import type { AcquisitionItem, HealthItem, ProfileDetails, UsageItem } from "@/lib/user-360/types";
 
 export function ProductUsagePanel({ items }: { items: UsageItem[] }) {
   return (
@@ -81,6 +83,67 @@ export function ProductHealthPanel({ status, items }: { status: "Healthy" | "Nee
           );
         })}
       </ul>
+    </SectionCard>
+  );
+}
+
+const shortDate = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : null;
+
+function DetailRow({ label, value, title }: { label: string; value: ReactNode; title?: string }) {
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] items-center gap-2 text-2xs">
+      <dt className="truncate text-slate-600">{label}</dt>
+      <dd className="truncate text-right font-medium text-gray-900" title={title}>
+        {value ?? "—"}
+      </dd>
+    </div>
+  );
+}
+
+/** The account as the product sees it: profile and billing from the "User" table. */
+export function AccountPanel({ details }: { details: ProfileDetails }) {
+  const b = details.billing;
+  const status = b.planStatus ? humanize(b.planStatus) : null;
+  const statusTone = b.planStatus === "ACTIVE" ? "green" : b.planStatus ? "amber" : "slate";
+  return (
+    <SectionCard title="Profile & Billing" info="From the product's own user record, not from tracked events." bodyClassName="space-y-3 pt-1">
+      <dl className="space-y-1.5">
+        <DetailRow label="Username" value={details.username} title={details.username ?? undefined} />
+        <DetailRow label="Location" value={details.location} title={details.location ?? undefined} />
+        <DetailRow label="Onboarded" value={details.onboarded ? "Yes" : "No"} />
+        <DetailRow label="Last seen in app" value={shortDate(details.lastSeenAt)} />
+      </dl>
+      {details.skills.length > 0 && (
+        <ul className="flex flex-wrap gap-1" aria-label="Skills">
+          {details.skills.slice(0, 12).map((skill) => (
+            <li key={skill}>
+              <Badge tone="slate" size="sm">
+                {skill}
+              </Badge>
+            </li>
+          ))}
+          {details.skills.length > 12 && <li className="text-2xs text-slate-500">+{details.skills.length - 12} more</li>}
+        </ul>
+      )}
+      <dl className="space-y-1.5 border-t border-slate-100 pt-2.5">
+        <DetailRow label="Plan" value={b.plan ? humanize(b.plan) : null} />
+        <DetailRow
+          label="Status"
+          value={
+            status ? (
+              <Badge tone={statusTone} size="sm">
+                {status}
+              </Badge>
+            ) : null
+          }
+        />
+        <DetailRow label="Billing cycle" value={b.billingCycle ? humanize(b.billingCycle) : null} />
+        <DetailRow label="Current period ends" value={shortDate(b.currentPeriodEnd)} />
+        {b.premiumUntil && <DetailRow label="Premium until" value={shortDate(b.premiumUntil)} />}
+        {b.proUntil && <DetailRow label="Pro until" value={shortDate(b.proUntil)} />}
+        <DetailRow label="Payment provider" value={b.paymentProvider ? humanize(b.paymentProvider) : null} />
+      </dl>
     </SectionCard>
   );
 }

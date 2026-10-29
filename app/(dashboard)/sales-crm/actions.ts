@@ -2,11 +2,13 @@
 
 import { z } from "zod";
 import { audit } from "@/lib/audit";
+import { canWriteAudit, sessionRefusal, writeRefusal } from "@/lib/auth/guard";
 import { queryOne } from "@/lib/db/pool";
 import { DISPOSITIONS, logActivity, scheduleCallback, setDisposition } from "@/lib/dashboards/sales";
 import { ApiError } from "@/lib/http/errors";
 import { autoAssignLeads } from "@/lib/sales/leads";
 import { isManagerRole } from "@/lib/sales-crm/derive";
+import { withUserDetails } from "@/lib/user-details";
 import type { ActionResult } from "@/lib/revenue-center/types";
 
 // Server Functions for the Sales Caller CRM.
@@ -15,8 +17,8 @@ import type { ActionResult } from "@/lib/revenue-center/types";
 // team-member id rather than a shared "dashboard:admin" string, so the
 // leaderboard and audit trail name a real person.
 //
-// KNOWN GAP: there is no authentication, so the caller id is taken from the
-// page on trust. Add sign-in before exposing this outside localhost.
+// Signing in proves access to the dashboard, not which team member is calling:
+// the caller id is still taken from the page's caller switcher.
 
 function failure(err: unknown): { ok: false; error: string } {
   if (err instanceof ApiError || err instanceof z.ZodError) {
@@ -39,7 +41,6 @@ async function requireCaller(callerId: string): Promise<{ id: string; name: stri
   return member;
 }
 
-const demoBlocked = (what: string) => ({ ok: false as const, error: `${what} is disabled while showing demo data.` });
 
 export async function logContactAction(
   leadId: string,
@@ -47,7 +48,8 @@ export async function logContactAction(
   input: { type: "call" | "whatsapp" | "email"; outcome?: string; durationSeconds?: number },
   demo: boolean
 ): Promise<ActionResult<{ dispositionRequired: boolean }>> {
-  if (demo) return demoBlocked("Logging contact");
+  const stop = await writeRefusal("Logging contact", demo);
+  if (stop) return stop;
   try {
     const caller = await requireCaller(callerId);
     const parsed = z
@@ -74,7 +76,8 @@ export async function addNoteAction(
   body: string,
   demo: boolean
 ): Promise<ActionResult<{ saved: true }>> {
-  if (demo) return demoBlocked("Adding notes");
+  const stop = await writeRefusal("Adding notes", demo);
+  if (stop) return stop;
   try {
     const caller = await requireCaller(callerId);
     const text = z.string().trim().min(1).max(10_000).parse(body);
@@ -105,7 +108,8 @@ export async function setDispositionAction(
   input: unknown,
   demo: boolean
 ): Promise<ActionResult<{ status: string; closed: boolean }>> {
-  if (demo) return demoBlocked("Setting an outcome");
+  const stop = await writeRefusal("Setting an outcome", demo);
+  if (stop) return stop;
   try {
     const caller = await requireCaller(callerId);
     const q = dispositionSchema.parse(input);
@@ -139,7 +143,8 @@ export async function scheduleCallbackAction(
   notes: string,
   demo: boolean
 ): Promise<ActionResult<{ dueAt: string }>> {
-  if (demo) return demoBlocked("Scheduling callbacks");
+  const stop = await writeRefusal("Scheduling callbacks", demo);
+  if (stop) return stop;
   try {
     const caller = await requireCaller(callerId);
     const when = z.iso.datetime({ offset: true }).parse(dueAt);
@@ -163,22 +168,28 @@ export async function revealContactAction(
   callerId: string,
   demo: boolean
 ): Promise<ActionResult<{ phone: string | null; email: string | null; name: string }>> {
-  if (demo) return demoBlocked("Revealing contact details");
+  const signedOut = await sessionRefusal();
+  if (signedOut) return signedOut;
+  if (demo) return { ok: false, error: "Revealing contact details is disabled while showing demo data." };
   try {
     const caller = await requireCaller(callerId);
-    const row = await queryOne<{ user_id: string; name: string | null; phone: string | null; email: string | null }>(
+    const found = await queryOne<{ user_id: string; name: string | null; phone: string | null; email: string | null }>(
       `SELECT u.user_id, u.name, u.phone, u.email
        FROM sales_leads l JOIN users u ON u.user_id = l.user_id WHERE l.id = $1`,
       [uuid.parse(leadId)]
     );
-    if (!row) throw new ApiError("NOT_FOUND", "Lead not found");
-    await audit({
-      actorId: caller.id,
-      action: "pii.revealed",
-      entityType: "user",
-      entityId: row.user_id,
-      metadata: { endpoint: "/sales-crm", lead_id: leadId, fields: ["phone", "email"] },
-    });
+    if (!found) throw new ApiError("NOT_FOUND", "Lead not found");
+    const row = (await withUserDetails([found]))[0]!;
+    // The audit row cannot be written on a read-only connection.
+    if (canWriteAudit()) {
+      await audit({
+        actorId: caller.id,
+        action: "pii.revealed",
+        entityType: "user",
+        entityId: row.user_id,
+        metadata: { endpoint: "/sales-crm", lead_id: leadId, fields: ["phone", "email"] },
+      });
+    }
     return { ok: true, data: { phone: row.phone, email: row.email, name: row.name ?? row.user_id } };
   } catch (err) {
     return failure(err);
@@ -190,7 +201,8 @@ export async function runRoundRobinAction(
   callerId: string,
   demo: boolean
 ): Promise<ActionResult<{ assigned: number }>> {
-  if (demo) return demoBlocked("Assigning leads");
+  const stop = await writeRefusal("Assigning leads", demo);
+  if (stop) return stop;
   try {
     const caller = await requireCaller(callerId);
     if (!isManagerRole(caller.role)) {

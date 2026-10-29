@@ -4,6 +4,7 @@ import { matchRule, previewRuleActions, SUPPORTED_ACTIONS, type AlertRule } from
 import { getPool, queryOne, queryRows, withTransaction } from "@/lib/db/pool";
 import { ApiError, notFound } from "@/lib/http/errors";
 import { compileConditions } from "@/lib/segments/conditions";
+import { withUserDetails } from "@/lib/user-details";
 
 // Dashboard 8 - Revenue Alerts & Automation Center (SOP section 15).
 
@@ -66,7 +67,8 @@ export async function listAlerts(
        FROM alerts`
     ),
   ]);
-  return { data: rows, total: total?.n ?? 0, summary: cards };
+  const data = await withUserDetails(rows, { name: "user_name", email: null, phone: null });
+  return { data, total: total?.n ?? 0, summary: cards };
 }
 
 export async function resolveAlert(alertId: string, actor: string, resolution: string) {

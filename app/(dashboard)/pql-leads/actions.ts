@@ -7,6 +7,7 @@ import { leadsToCsv } from "@/lib/pql-intelligence/derive";
 import { loadPqlIntelligence } from "@/lib/pql-intelligence/load";
 import { parsePqlFilters } from "@/lib/pql-intelligence/filters";
 import type { ActionResult } from "@/lib/revenue-center/types";
+import { sessionRefusal, writeRefusal } from "@/lib/auth/guard";
 
 // Server Functions for Dashboard 4. Both are deliberately modest: exporting is
 // read-only, and creating a rule leaves it inactive so nothing starts firing
@@ -35,6 +36,8 @@ const paramsSchema = z.record(z.string(), z.union([z.string(), z.array(z.string(
 export async function exportCohortAction(
   searchParams: Record<string, string | string[] | undefined>
 ): Promise<ActionResult<{ filename: string; csv: string; rows: number }>> {
+  const signedOut = await sessionRefusal();
+  if (signedOut) return signedOut;
   try {
     const filters = parsePqlFilters(paramsSchema.parse(searchParams));
     const data = await loadPqlIntelligence(filters);
@@ -72,7 +75,8 @@ export async function createAlertRuleAction(
   input: unknown,
   demo: boolean
 ): Promise<ActionResult<{ id: string; name: string; status: string }>> {
-  if (demo) return { ok: false, error: "Creating rules is disabled while showing demo data." };
+  const stop = await writeRefusal("Creating rules", demo);
+  if (stop) return stop;
   try {
     const q = alertRuleSchema.parse(input);
     // Cohort DSL conditions (lib/segments/conditions.ts): { field, cmp, value }.

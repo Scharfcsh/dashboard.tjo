@@ -8,6 +8,7 @@ import { ApiError } from "@/lib/http/errors";
 import { mockLiveSession } from "@/lib/live-intelligence/mock";
 import type { LiveSession } from "@/lib/live-intelligence/types";
 import type { ActionResult, Tone } from "@/lib/revenue-center/types";
+import { sessionRefusal, writeRefusal } from "@/lib/auth/guard";
 
 // Server Functions for Live User Intelligence. Same KNOWN GAP as the Revenue
 // Command Center: dashboard pages are not authenticated yet.
@@ -24,6 +25,8 @@ function failure(err: unknown): { ok: false; error: string } {
 }
 
 export async function getLiveSessionAction(userId: string, demo: boolean): Promise<ActionResult<LiveSession | null>> {
+  const signedOut = await sessionRefusal();
+  if (signedOut) return signedOut;
   try {
     const id = z.string().min(1).max(128).parse(userId);
     if (demo) return { ok: true, data: mockLiveSession(id) };
@@ -61,7 +64,8 @@ export async function getLiveSessionAction(userId: string, demo: boolean): Promi
 
 /** Raise a manual follow-up alert (rule manual_follow_up). One per user per minute. */
 export async function createAlertAction(userId: string, note: string, demo: boolean): Promise<ActionResult<{ alertId: string | null }>> {
-  if (demo) return { ok: false, error: "Creating alerts is disabled while showing demo data." };
+  const stop = await writeRefusal("Creating alerts", demo);
+  if (stop) return stop;
   try {
     const input = z.object({ userId: z.string().min(1).max(128), note: z.string().trim().max(500) }).parse({ userId, note });
     const minute = new Date().toISOString().slice(0, 16);

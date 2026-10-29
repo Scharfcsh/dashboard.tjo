@@ -16,7 +16,7 @@ import { ProfileHeader } from "@/components/user-360/ProfileHeader";
 import { ProfileMetrics } from "@/components/user-360/ProfileMetrics";
 import { ProfileTabs } from "@/components/user-360/ProfileTabs";
 import { PqlReasonPanel } from "@/components/user-360/PqlReasonPanel";
-import { AcquisitionPanel, ProductHealthPanel, ProductUsagePanel } from "@/components/user-360/InfoPanels";
+import { AccountPanel, AcquisitionPanel, ProductHealthPanel, ProductUsagePanel } from "@/components/user-360/InfoPanels";
 import { SalesEngagementPanel, type SalesAction } from "@/components/user-360/SalesEngagementPanel";
 import { SessionJourney } from "@/components/user-360/SessionJourney";
 import { SubscriptionIntentJourney } from "@/components/user-360/SubscriptionIntentJourney";
@@ -102,6 +102,7 @@ export function UserProfileView({ data, initialTab }: { data: UserProfileData; i
   const overview = (
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 wide:grid-cols-[minmax(0,19rem)_minmax(0,1fr)_minmax(0,20rem)]">
       <div className="space-y-3">
+        {data.user.details && <AccountPanel details={data.user.details} />}
         <ProductUsagePanel items={data.usage} />
         <AcquisitionPanel items={data.acquisition} />
         <ProductHealthPanel status={data.health.status} items={data.health.items} />

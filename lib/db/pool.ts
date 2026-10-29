@@ -25,7 +25,9 @@ export function getPool(): Pool {
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 5_000,
     // Postgres applies these at connection start - no extra round trip per checkout.
-    options: `-c app.business_timezone=${config.BUSINESS_TIMEZONE} -c app.online_window_seconds=${config.ONLINE_WINDOW_SECONDS} -c timezone=UTC`,
+    options:
+      `-c app.business_timezone=${config.BUSINESS_TIMEZONE} -c app.online_window_seconds=${config.ONLINE_WINDOW_SECONDS} -c timezone=UTC` +
+      (config.EVENTS_DATABASE_READ_ONLY ? " -c default_transaction_read_only=on" : ""),
   });
   pool.on("error", (err) => console.error("[db] idle client error", err));
 

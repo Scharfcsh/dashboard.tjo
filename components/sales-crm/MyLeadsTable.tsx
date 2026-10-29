@@ -37,6 +37,7 @@ export function MyLeadsTable({
   selectedLeadId,
   demo,
   busy,
+  team,
   onSelect,
   onContact,
 }: {
@@ -45,6 +46,8 @@ export function MyLeadsTable({
   selectedLeadId: string | null;
   demo: boolean;
   busy: boolean;
+  /** Manager view: every lead on the team, assigned or not. */
+  team: boolean;
   onSelect: (leadId: string) => void;
   onContact: (lead: QueueLead, type: "call" | "whatsapp" | "email") => void;
 }) {
@@ -53,8 +56,8 @@ export function MyLeadsTable({
   return (
     <SectionCard
       id="my-leads"
-      title="My Leads"
-      info="Your assigned open leads, ordered the way the system says to work them: callbacks that are due, then P0 leads past their response SLA, then priority, then PQL score."
+      title={team ? "Team Leads" : "My Leads"}
+      info={`${team ? "Every open lead on the team, assigned or not" : "Your assigned open leads"}, ordered the way the system says to work them: callbacks that are due, then P0 leads past their response SLA, then priority, then PQL score.`}
       actions={
         <span className="flex items-center gap-2">
           <span className="tabular hidden text-2xs whitespace-nowrap text-slate-500 sm:inline">

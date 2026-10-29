@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronDown } from "lucide-react";
+import { LogOut } from "lucide-react";
+import { logoutAction } from "@/app/login/actions";
 import { Logo } from "@/components/layout/Logo";
 import { PRIMARY_NAV, SECONDARY_NAV, type NavItem } from "@/components/layout/nav";
 import { cx } from "@/components/ui/tones";
@@ -36,7 +37,7 @@ function NavLink({ item, active, alertCount, onNavigate }: { item: NavItem; acti
   );
 }
 
-export function Sidebar({ alertCount, onNavigate }: { alertCount: number; onNavigate?: () => void }) {
+export function Sidebar({ alertCount, email, onNavigate }: { alertCount: number; email: string; onNavigate?: () => void }) {
   const pathname = usePathname();
   const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
@@ -64,18 +65,30 @@ export function Sidebar({ alertCount, onNavigate }: { alertCount: number; onNavi
         </ul>
       </nav>
 
-      <button
-        type="button"
-        className="focus-ring mt-3 flex w-full items-center gap-3 rounded-xl border border-line px-2.5 py-2.5 text-left transition-colors hover:bg-slate-50"
-        aria-label="Account menu"
-      >
-        <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-indigo-500 text-xs font-semibold text-white">AD</span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-[0.8125rem] font-semibold text-gray-900">Admin</span>
-          <span className="block truncate text-2xs text-slate-500">admin@topjoboffer.com</span>
+      <div className="mt-3 flex items-center gap-2.5 rounded-xl border border-line px-2.5 py-2.5">
+        <span
+          className="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-indigo-500 text-xs font-semibold text-white uppercase"
+          aria-hidden
+        >
+          {email.slice(0, 2)}
         </span>
-        <ChevronDown className="size-3.5 text-slate-400" aria-hidden />
-      </button>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[0.8125rem] font-semibold text-gray-900">Signed in</span>
+          <span className="block truncate text-2xs text-slate-500" title={email}>
+            {email}
+          </span>
+        </span>
+        <form action={logoutAction}>
+          <button
+            type="submit"
+            aria-label="Sign out"
+            title="Sign out"
+            className="focus-ring rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+          >
+            <LogOut className="size-3.5" aria-hidden />
+          </button>
+        </form>
+      </div>
     </div>
   );
 }

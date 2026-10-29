@@ -55,7 +55,7 @@ export function CallNextCard({
       // Tooltip renders its own wrapper, so the flex sizing has to go on it.
       <Tooltip
         key={type}
-        content="Contact actions are disabled while showing demo data."
+        content="Contact actions are disabled — see the note at the top of the page."
         side="top"
         className="flex-1"
       >

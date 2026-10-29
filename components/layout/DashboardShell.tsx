@@ -5,7 +5,7 @@ import { Menu, X } from "lucide-react";
 import { Logo } from "@/components/layout/Logo";
 import { Sidebar } from "@/components/layout/Sidebar";
 
-export function DashboardShell({ alertCount, children }: { alertCount: number; children: ReactNode }) {
+export function DashboardShell({ alertCount, email, children }: { alertCount: number; email: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     if (!open) return;
@@ -17,7 +17,7 @@ export function DashboardShell({ alertCount, children }: { alertCount: number; c
   return (
     <div className="min-h-screen bg-canvas">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-[12.25rem] border-r border-line lg:block">
-        <Sidebar alertCount={alertCount} />
+        <Sidebar alertCount={alertCount} email={email} />
       </aside>
 
       {/* Tablet / mobile top bar */}
@@ -38,7 +38,7 @@ export function DashboardShell({ alertCount, children }: { alertCount: number; c
         <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
           <button type="button" aria-label="Close navigation" className="absolute inset-0 animate-fade-in bg-gray-900/30" onClick={() => setOpen(false)} />
           <div className="absolute inset-y-0 left-0 w-64 animate-drawer-in border-r border-line shadow-pop">
-            <Sidebar alertCount={alertCount} onNavigate={() => setOpen(false)} />
+            <Sidebar alertCount={alertCount} email={email} onNavigate={() => setOpen(false)} />
             <button
               type="button"
               onClick={() => setOpen(false)}

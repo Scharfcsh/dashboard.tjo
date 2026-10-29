@@ -1,3 +1,4 @@
+import { getConfig } from "@/lib/config";
 import { runNightlyIfDue, runPipeline, runSweep } from "@/lib/jobs/pipeline";
 
 // In-process scheduler, started from instrumentation.ts when JOBS_ENABLED=true.
@@ -33,6 +34,10 @@ function every(name: string, ms: number, fn: () => Promise<unknown>) {
 
 export function startScheduler() {
   if (g.__analyticsSchedulerStarted) return;
+  if (getConfig().EVENTS_DATABASE_READ_ONLY) {
+    console.warn("[scheduler] EVENTS_DATABASE_READ_ONLY is set - background jobs write, so they are not started");
+    return;
+  }
   g.__analyticsSchedulerStarted = true;
   every("pipeline", PIPELINE_EVERY_MS, () => runPipeline("schedule"));
   every("sweep", SWEEP_EVERY_MS, () => runSweep("schedule"));
